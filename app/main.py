@@ -3,7 +3,7 @@ from app.api.ping import router as ping_router
 
 def create_app() -> FastAPI:
     app = FastAPI(title="UST Autopilot App")
-    # Legacy compatibility: /ping
+    # Legacy: /ping
     @app.get("/ping")
     def legacy_ping():
         return {"ping": "pong"}
