@@ -1,0 +1,24 @@
+name: Promote branches
+on:
+  workflow_dispatch:
+  schedule: [{ cron: "0 */6 * * *" }]
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: beta
+          branch: exp
+          title: "chore(promote): exp → beta"
+          body: "Automated promotion"
+      - uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          branch: beta
+          title: "chore(promote): beta → main"
+          body: "Automated promotion"
