@@ -1,0 +1,10 @@
+diff --git a/app/api/ping.py b/app/api/ping.py
+index 3b18c3d..c1c5b2f 100644
+--- a/app/api/ping.py
++++ b/app/api/ping.py
+@@ -4,4 +4,4 @@ router = APIRouter()
+ 
+ @router.get("/ping")
+ def ping():
+-    return {"ping": "pong"}
++    return {"pong": True}
