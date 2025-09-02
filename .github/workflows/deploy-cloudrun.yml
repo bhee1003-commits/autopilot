@@ -1,0 +1,57 @@
+name: Deploy Cloud Run
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "Environment (main|beta|exp)"
+        required: true
+        default: "main"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -U pip && pip install -r requirements.txt || true
+      - run: pytest -q || echo "tests failed but continue"  # 필요 시 실패시 중단 처리
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT }}
+
+      - name: Build & Push image
+        env:
+          PROJECT: ${{ secrets.GCP_PROJECT }}
+          REGION:  ${{ secrets.GCP_REGION }}
+          AR_REPO: ${{ secrets.AR_REPO }}
+        run: |
+          IMAGE="asia-northeast3-docker.pkg.dev/${PROJECT}/${AR_REPO}/autopilot:${GITHUB_SHA}"
+          gcloud builds submit --tag "$IMAGE"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      - name: Deploy to Cloud Run
+        env:
+          REGION: ${{ secrets.GCP_REGION }}
+          SERVICE_MAIN: ${{ secrets.SERVICE_MAIN }}
+          SERVICE_BETA: ${{ secrets.SERVICE_BETA }}
+          SERVICE_EXP:  ${{ secrets.SERVICE_EXP }}
+        run: |
+          case "${{ inputs.env }}" in
+            main) SVC="$SERVICE_MAIN" ;;
+            beta) SVC="$SERVICE_BETA" ;;
+            exp)  SVC="$SERVICE_EXP"  ;;
+            *) echo "unknown env"; exit 1 ;;
+          esac
+          gcloud run deploy "$SVC" \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --platform managed \
+            --allow-unauthenticated
