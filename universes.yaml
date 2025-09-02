@@ -1,10 +1,4 @@
 universes:
-  - name: main-py311
-    branch: main
-    python: "3.11"
-  - name: beta-py312
-    branch: beta
-    python: "3.12"
-  - name: exp-py313
-    branch: exp
-    python: "3.13"
+  - name: main-py311   ; branch: main ; python: "3.11"
+  - name: beta-py312   ; branch: beta ; python: "3.12"
+  - name: exp-py313    ; branch: exp  ; python: "3.13"
