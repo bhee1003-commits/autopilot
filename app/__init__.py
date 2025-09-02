@@ -1,1 +1,1 @@
-from .main import app, create_app  # re-export for tests that do 'from app import ...'
+from .main import app, create_app  # support: from app import app / create_app
