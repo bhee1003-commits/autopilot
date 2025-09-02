@@ -3,7 +3,7 @@ name: Deploy to Cloud Run
 on:
   push:
     branches: [ main, beta, exp ]
-    paths: 
+    paths:
       - "app/**"
       - ".github/workflows/deploy.yml"
 
@@ -14,7 +14,8 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT_EMAIL  != '' && secrets.GCP_PROJECT 1= '' && secrets.GCP_REGION != '' }}
+    # WIF 필수 4개 시크릿 없으면 자동 스킵
+    if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT_EMAIL != '' && secrets.GCP_PROJECT != '' && secrets.GCP_REGION != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -22,25 +23,27 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
 
       - uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${ secrets.GCP_PROJECT }}
+          project_id: ${{ secrets.GCP_PROJECT }}
 
       - name: Set service and region
         id: meta
         run: |
           case "${GITHUB_REF_NAME}" in
-             main) echo "svc=cloudrun-main"  >> "$GITHUB_OUTPUT";;
+            main) echo "svc=cloudrun-main"  >> "$GITHUB_OUTPUT";;
             beta) echo "svc=cloudrun-beta"  >> "$GITHUB_OUTPUT";;
             exp)  echo "svc=cloudrun-exp"   >> "$GITHUB_OUTPUT";;
-        echo "region=${ secrets.GCP_REGION }" >> "$GITHUB_OUTPUT"
+            *)    echo "svc=cloudrun-main"  >> "$GITHUB_OUTPUT";;
+          esac
+          echo "region=${{ secrets.GCP_REGION }}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy
         run: |
-          gcloud run deploy "${ steps.meta.outputs.svc }" \
-            --region "${ steps.meta.outputs.region }" \
+          gcloud run deploy "${{ steps.meta.outputs.svc }}" \
+            --region "${{ steps.meta.outputs.region }}" \
             --source . \
             --platform managed \
             --allow-unauthenticated
