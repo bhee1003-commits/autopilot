@@ -11,7 +11,6 @@ def create_app() -> FastAPI:
     app.include_router(ping_router, prefix="/api")
     return app
 
-# export default app object
 app = create_app()
 
 if __name__ == "__main__":
