@@ -4,30 +4,23 @@ on:
   push:
     branches: [ main, beta, exp ]
 
-# 중복 실행 자동 취소
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
 jobs:
   test:
-    name: test (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: main-py311
-            python: "3.11"
-          - name: beta-py312
-            python: "3.12"
-          - name: exp-py313
-            python: "3.13"
-steps:
+        python: [ "3.11", "3.12", "3.13" ]
+    steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-          cache: pip              # pip 캐시 활성화
+          cache: pip
       - run: pip install -U pip pytest || true
       - run: if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - run: pip install -e . || true
