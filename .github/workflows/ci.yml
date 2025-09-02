@@ -36,3 +36,6 @@ jobs:
       - run: pip install pytest-cov flake8 || true
       - run: pytest --cov=app --cov-report=term-missing || true
       - run: flake8 app tests || true
+      - run: pip install pytest-cov flake8 || true
+      - run: pytest --cov=app --cov-report=term-missing || true
+      - run: flake8 app tests || true
