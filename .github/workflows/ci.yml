@@ -1,28 +1,25 @@
 name: CI
 on:
-  pull_request:
   push:
-    branches: [ main, beta, exp ]
-
+    branches: [main, beta, exp]
+  pull_request: {}
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python: [ "3.11", "3.12", "3.13" ]
+        python: ["3.11","3.12","3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-          cache: pip
+          cache: 'pip'
       - run: pip install -U pip pytest || true
-      - run: if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - run: if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install fastapi httpx; fi
       - run: pip install -e . || true
       - run: pytest -q
-B64
