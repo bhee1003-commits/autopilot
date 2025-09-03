@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Gate: check required secrets
+      - name: "Gate: check required secrets"
         id: gate
         env:
           WIP: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -69,37 +69,3 @@ jobs:
             --source . \
             --platform managed \
             --allow-unauthenticated
-      - if: steps.gate.outputs.ok == 'true'
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
-
-      - if: steps.gate.outputs.ok == 'true'
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT }}
-
-      - if: steps.gate.outputs.ok == 'true'
-        name: Set service and region
-        id: meta
-        shell: bash
-        run: |
-          case "${GITHUB_REF_NAME}" in
-            main) SVC=cloudrun-main ;;
-            beta) SVC=cloudrun-beta ;;
-            exp)  SVC=cloudrun-exp  ;;
-            *)    SVC=cloudrun-main ;;
-          esac
-          echo "svc=$SVC" >> "$GITHUB_OUTPUT"
-          echo "region=${{ secrets.GCP_REGION }}" >> "$GITHUB_OUTPUT"
-
-      - if: steps.gate.outputs.ok == 'true'
-        name: Deploy
-        run: |
-          gcloud run deploy "${{ steps.meta.outputs.svc }}" \
-            --region "${{ steps.meta.outputs.region }}" \
-            --source . \
-            --platform managed \
-            --allow-unauthenticated \
