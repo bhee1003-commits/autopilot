@@ -49,6 +49,9 @@ jobs:
     strategy:
       matrix:
         svc: [cloudrun-main, cloudrun-beta, cloudrun-exp]
+    env:
+      # secrets를 env로 매핑 → if:에서 env로 체크
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -81,11 +84,11 @@ jobs:
           echo "OK"
 
       - name: Slack notify
-        if: always() && secrets.SLACK_WEBHOOK_URL != ''
+        if: ${{ always() && env.SLACK_WEBHOOK_URL != '' }}
         run: |
           STATUS="${{ job.status }}"
           SVC="${{ matrix.svc }}"
           URL=$(gcloud run services describe "$SVC" --region "${{ env.REGION }}" --project "${{ env.PROJECT_ID }}" --format='value(status.url)')
           MSG="[$STATUS] $SVC -> $URL  (@ ${GITHUB_SHA:0:7})"
           curl -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"$MSG\"}" "${{ secrets.SLACK_WEBHOOK_URL }}"
+            --data "{\"text\":\"$MSG\"}" "${SLACK_WEBHOOK_URL}"
