@@ -20,9 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.out.outputs.image }}
-    permissions:
-      contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -36,54 +33,39 @@ jobs:
           project_id: ${{ env.PROJECT_ID }}
           install_components: 'beta'
 
-      - name: Build & Push (buildpacks) — wait until SUCCESS
+      - name: Build & Push (buildpacks) — wait for SUCCESS
         id: out
+        shell: bash
         run: |
           set -euo pipefail
           IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_REPO }}/app:${GITHUB_SHA}"
 
-          # Submit async (로그 스트리밍 권한 문제 회피)
+          # Submit async (권한상 로그 스트리밍 이슈 회피)
           gcloud builds submit \
             --pack image="$IMAGE" \
             --gcs-source-staging-dir "gs://${{ env.PROJECT_NUMBER }}-cloudbuild/source" \
             --async
 
-          # 가장 최근 해당 이미지 빌드 ID 찾기
-          BID=""
-          for i in {1..30}; do
-            BID=$(gcloud builds list \
-              --filter="images:$IMAGE" \
-              --sort-by="~createTime" \
-              --format="value(ID)" \
-              --limit=1 \
-              --project ${{ env.PROJECT_ID }})
-            if [[ -n "$BID" ]]; then break; fi
-            echo "Waiting for build to appear... ($i)"
-            sleep 5
-          done
-          if [[ -z "$BID" ]]; then
-            echo "ERROR: Build ID not found for image $IMAGE"
-            exit 1
-          fi
-          echo "Build ID: $BID"
-
-          # 완료까지 상태 폴링
-          STATUS=""
+          # Cloud Build 완료까지 폴링 (최대 ~20분, 10초 간격)
           for i in {1..120}; do
-            STATUS=$(gcloud builds describe "$BID" --project ${{ env.PROJECT_ID }} --format="value(status)")
-            echo "Build status: $STATUS (t=$((i*5))s)"
-            case "$STATUS" in
-              SUCCESS) break ;;
-              FAILURE|CANCELLED|EXPIRED) echo "Build ended with $STATUS"; exit 1 ;;
-              *) sleep 5 ;;
-            esac
+            BID=$(gcloud builds list --filter="images:$IMAGE" --sort-by="~createTime" \
+                  --format="value(ID)" --limit=1 --project ${{ env.PROJECT_ID }})
+            if [[ -n "${BID:-}" ]]; then
+              STATUS=$(gcloud builds describe "$BID" --project ${{ env.PROJECT_ID }} --format="value(status)")
+              echo "Build $BID status=$STATUS"
+              if [[ "$STATUS" == "SUCCESS" ]]; then
+                break
+              elif [[ "$STATUS" == "FAILURE" || "$STATUS" == "CANCELLED" || "$STATUS" == "TIMEOUT" ]]; then
+                echo "Build failed with status=$STATUS"
+                exit 1
+              fi
+            else
+              echo "Build not visible yet..."
+            fi
+            sleep 10
           done
-          if [[ "$STATUS" != "SUCCESS" ]]; then
-            echo "ERROR: Build did not reach SUCCESS"
-            exit 1
-          fi
 
-          # 출력으로 이미지 태그 전달
+          [[ "${STATUS:-}" == "SUCCESS" ]] || { echo "Build did not reach SUCCESS"; exit 1; }
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
   deploy:
@@ -92,14 +74,7 @@ jobs:
     strategy:
       matrix:
         svc: [cloudrun-main, cloudrun-beta, cloudrun-exp]
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     steps:
-      - uses: actions/checkout@v4
-
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
@@ -111,29 +86,51 @@ jobs:
           install_components: 'beta'
 
       - name: Deploy ${{ matrix.svc }}
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
           IMAGE="${{ needs.build.outputs.image }}"
-          gcloud run deploy "${{ matrix.svc }}" \
+          SVC="${{ matrix.svc }}"
+          echo "Deploying $SVC with $IMAGE"
+          gcloud run deploy "$SVC" \
             --image "$IMAGE" \
             --region "${{ env.REGION }}" \
+            --project "${{ env.PROJECT_ID }}" \
             --allow-unauthenticated \
-            --project "${{ env.PROJECT_ID }}"
+            --quiet
 
-      - name: Smoke /health ${{ matrix.svc }}
+      - name: Wait Ready & Smoke /health (${{ matrix.svc }})
+        shell: bash
         run: |
-          set -e
-          URL=$(gcloud run services describe "${{ matrix.svc }}" --region "${{ env.REGION }}" --project "${{ env.PROJECT_ID }}" --format='value(status.url)')
-          echo "Check: $URL/health"
-          curl -fsSL "$URL/health" >/dev/null
-          echo "OK"
-
-      - name: Slack notify
-        if: ${{ always() && env.SLACK_WEBHOOK_URL != '' }}
-        run: |
-          STATUS="${{ job.status }}"
+          set -euo pipefail
           SVC="${{ matrix.svc }}"
-          URL=$(gcloud run services describe "$SVC" --region "${{ env.REGION }}" --project "${{ env.PROJECT_ID }}" --format='value(status.url)')
-          MSG="[$STATUS] $SVC -> $URL  (@ ${GITHUB_SHA:0:7})"
-          curl -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"$MSG\"}" "${SLACK_WEBHOOK_URL}"
+          REGION="${{ env.REGION }}"
+          PROJECT="${{ env.PROJECT_ID }}"
+          URL=$(gcloud run services describe "$SVC" --region "$REGION" --project "$PROJECT" --format='value(status.url)')
+          TARGET="${URL%/}/health"
+          echo "Check: $TARGET"
+
+          for i in {1..60}; do
+            read LREADY LCREATED < <(gcloud run services describe "$SVC" --region "$REGION" --project "$PROJECT" --format='value(status.latestReadyRevisionName,status.latestCreatedRevisionName)')
+            echo "Ready=$LREADY, Created=$LCREATED (t=$((i*5))s)"
+            if [[ -n "$LREADY" && "$LREADY" == "$LCREATED" ]]; then
+              break
+            fi
+            sleep 5
+          done
+
+          for i in {1..20}; do
+            code="$(curl -L -sS -o /dev/null -w "%{http_code}" \
+                    --connect-timeout 5 --max-time 10 \
+                    --retry 5 --retry-delay 2 --retry-all-errors \
+                    "$TARGET" || echo 000)"
+            echo "Attempt $i → HTTP $code"
+            if [[ "$code" == "200" ]]; then
+              echo "Health OK"
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "ERROR: health check failed"
+          exit 1
