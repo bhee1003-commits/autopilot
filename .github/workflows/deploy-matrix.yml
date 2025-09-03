@@ -5,6 +5,11 @@ on:
     branches: [ "main", "beta", "exp" ]
   workflow_dispatch:
 
+# OIDC 토큰·코드 체크아웃 권한 (중요!)
+permissions:
+  contents: read
+  id-token: write
+
 env:
   REGION: asia-northeast3
   PROJECT_ID: ust-multiverse-dev
@@ -16,6 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.out.outputs.image }}
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +46,6 @@ jobs:
             --pack image="$IMAGE" \
             --gcs-source-staging-dir "gs://${{ env.PROJECT_NUMBER }}-cloudbuild/source" \
             --async
-          # 최신 빌드 ID 폴링(최근순 1개)
           BID=$(gcloud builds list --filter="images:$IMAGE" --sort-by="~createTime" --format="value(ID)" --limit=1 --project ${{ env.PROJECT_ID }})
           gcloud builds describe "$BID" --format="value(status)" --project ${{ env.PROJECT_ID }}
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
@@ -49,8 +56,10 @@ jobs:
     strategy:
       matrix:
         svc: [cloudrun-main, cloudrun-beta, cloudrun-exp]
+    permissions:
+      contents: read
+      id-token: write
     env:
-      # secrets를 env로 매핑 → if:에서 env로 체크
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     steps:
       - uses: actions/checkout@v4
