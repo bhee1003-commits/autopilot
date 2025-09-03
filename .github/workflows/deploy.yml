@@ -10,43 +10,47 @@ on:
 
 permissions:
   contents: read
-  id-token: write  # OIDC for WIF
+  id-token: write
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # 4개 GCP 시크릿 모두 있을 때만 동작
-    if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT_EMAIL != '' && secrets.GCP_PROJECT != '' && secrets.GCP_REGION != '' }}
     steps:
       - uses: actions/checkout@v4
-
-      # 보기 좋은 자체 점검 (로그에 true/false 표시)
-      - name: Check required secrets
+      - name: Gate: check required secrets
+        id: gate
         env:
-          HAS_WIP:    ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
-          HAS_SA:     ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL   != '' }}
-          HAS_PROJ:   ${{ secrets.GCP_PROJECT                 != '' }}
-          HAS_REGION: ${{ secrets.GCP_REGION                  != '' }}
+          WIP: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          SA:  ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          PR:  ${{ secrets.GCP_PROJECT }}
+          RG:  ${{ secrets.GCP_REGION }}
+        shell: bash
         run: |
-          echo "GCP_WORKLOAD_IDENTITY_PROVIDER: $HAS_WIP"
-          echo "GCP_SERVICE_ACCOUNT_EMAIL     : $HAS_SA"
-          echo "GCP_PROJECT                   : $HAS_PROJ"
-          echo "GCP_REGION                    : $HAS_REGION"
-
-      # OIDC(WIF) 인증
-      - id: auth
+          ok=true
+          for v in WIP SA PR RG; do
+            [ -z "${!v}" ] && ok=false
+          done
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+          echo "WIF_PROVIDER: $([ -n "$WIP" ] && echo true || echo false)"
+          echo "SA_EMAIL   : $([ -n "$SA"  ] && echo true || echo false)"
+          echo "PROJECT    : $([ -n "$PR"  ] && echo true || echo false)"
+          echo "REGION     : $([ -n "$RG"  ] && echo true || echo false)"
+      - if: steps.gate.outputs.ok == 'true'
+        id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
 
-      - uses: google-github-actions/setup-gcloud@v2
+      - if: steps.gate.outputs.ok == 'true'
+        uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT }}
 
-      # 브랜치별 서비스명/리전 계산
-      - name: Set service and region
+      - if: steps.gate.outputs.ok == 'true'
+        name: Set service and region
         id: meta
+        shell: bash
         run: |
           case "${GITHUB_REF_NAME}" in
             main) SVC=cloudrun-main ;;
@@ -57,8 +61,8 @@ jobs:
           echo "svc=$SVC" >> "$GITHUB_OUTPUT"
           echo "region=${{ secrets.GCP_REGION }}" >> "$GITHUB_OUTPUT"
 
-      # 실제 배포(소스에서 빌드 & 배포)
-      - name: Deploy
+      - if: steps.gate.outputs.ok == 'true'
+        name: Deploy
         run: |
           gcloud run deploy "${{ steps.meta.outputs.svc }}" \
             --region "${{ steps.meta.outputs.region }}" \
