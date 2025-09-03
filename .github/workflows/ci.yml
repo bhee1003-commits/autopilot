@@ -1,16 +1,10 @@
 name: CI
 on:
   push:
-    branches: [main, beta, exp]
-    paths:
-      - 'app/**'
-      - 'tests/**'
-      - 'requirements.txt'
+    branches: [ main, beta, exp ]
+    paths: [ 'app/**', 'tests/**', 'requirements.txt', 'pyproject.toml', '.github/workflows/ci.yml' ]
   pull_request:
-    paths:
-      - 'app/**'
-      - 'tests/**'
-      - 'requirements.txt'
+    paths: [ 'app/**', 'tests/**', 'requirements.txt', 'pyproject.toml', '.github/workflows/ci.yml' ]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -29,16 +23,13 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: 'pip'
-      - run: pip install -U pip pytest || true
+      - run: pip install -U pip pytest pytest-cov flake8 || true
       - run: if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install fastapi httpx; fi
       - run: pip install -e . || true
-      - run: pytest -q
-      - run: pip install pytest-cov flake8 || true
-      - run: pytest --cov=app --cov-report=term-missing || true
-      - run: flake8 app tests || true
-      - run: pip install pytest-cov flake8 || true
-      - run: pytest --cov=app --cov-report=term-missing || true
-      - run: flake8 app tests || true
+      # 품질 게이트 (fail-under: 원하는 임계치로 조절)
+      - run: pytest --maxfail=1 --cov=app --cov-report=term-missing --cov-fail-under=70
+      - run: flake8 app tests
+      # 실패 시 메일 알림(Secrets 필요)
       - name: notify on failure
         if: failure()
         uses: dawidd6/action-send-mail@v3
@@ -48,10 +39,11 @@ jobs:
           username: ${{ secrets.SMTP_USER }}
           password: ${{ secrets.SMTP_PASS }}
           subject: "CI FAILED: ${{ github.repository }} @ ${{ github.ref_name }}"
-          to: ${{ secrets.NOTIFY_EMAIL }}
-          from: "ci-bot <ci@nowhere.local>"
+          to: ${{ secrets.SMTP_TO }}
+          from: ${{ secrets.SMTP_FROM }}
           content_type: text/plain
           body: |
-            Workflow: ${{ github.workflow }}
-            Branch  : ${{ github.ref_name }}
-            Run URL : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Workflow : ${{ github.workflow }}
+            Branch   : ${{ github.ref_name }}
+            Commit   : ${{ github.sha }}
+            Run URL  : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

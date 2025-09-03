@@ -10,17 +10,15 @@ on:
 permissions:
   contents: read
   id-token: write
-\
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # WIF 필수 4개 시크릿 없으면 자동 스킵
+    # Skip when any of the required secrets are missing
     if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT_EMAIL != '' && secrets.GCP_PROJECT != '' && secrets.GCP_REGION != '' }}
-
     steps:
       - uses: actions/checkout@v4
 
-      # 보기 좋은 자체 점검(로그로 true/false만 출력)
       - name: Check required secrets
         env:
           HAS_WIP:    ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
@@ -31,8 +29,8 @@ jobs:
           echo "GCP_WORKLOAD_IDENTITY_PROVIDER: $HAS_WIP"
           echo "GCP_SERVICE_ACCOUNT_EMAIL     : $HAS_SA"
           echo "GCP_PROJECT                   : $HAS_PROJ"
-          echo "GCP_REGION                    : $HAS_REGION" \
-\
+          echo "GCP_REGION                    : $HAS_REGION"
+
       - id: auth
         uses: google-github-actions/auth@v2
         with:
@@ -52,12 +50,8 @@ jobs:
             exp)  echo "svc=cloudrun-exp"   >> "$GITHUB_OUTPUT";;
             *)    echo "svc=cloudrun-main"  >> "$GITHUB_OUTPUT";;
           esac
-          echo "region=${{ secrets.GCP_REGION }}" >> "$GITHUB_OUTPUT" \
-\
-     - name: Deploy
+          echo "region=${{ secrets.GCP_REGION }}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy
         run: |
-          gcloud run deploy "${{ steps.meta.outputs.svc }}" \
-            --region "${{ steps.meta.outputs.region }}" \
-            --source . \
-            --platform managed \
-            --allow-unauthenticated
+          gcloud run deploy "${{ steps.meta.outputs.svc }}"                 --region "${{ steps.meta.outputs.region }}"                 --source .                 --platform managed                 --allow-unauthenticated

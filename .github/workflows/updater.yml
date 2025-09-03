@@ -1,0 +1,48 @@
+name: updater
+
+on:
+  workflow_dispatch:
+    inputs:
+      path:
+        description: "Path to write (e.g. .github/workflows/deploy.yml)"
+        required: true
+      content_b64:
+        description: "Base64 content to write"
+        required: true
+      message:
+        description: "Commit message"
+        required: true
+        default: "chore: auto-update via updater"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply file content
+        env:
+          TARGET_PATH: ${{ github.event.inputs.path }}
+          CONTENT_B64: ${{ github.event.inputs.content_b64 }}
+        run: |
+          mkdir -p "$(dirname "$TARGET_PATH")"
+          echo "$CONTENT_B64" | base64 -d > "$TARGET_PATH"
+
+      - name: Commit & push
+        env:
+          COMMIT_MSG: ${{ github.event.inputs.message }}
+        run: |
+          git config user.name "actions-bot"
+          git config user.email "actions@github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+          git commit -m "$COMMIT_MSG"
+          git push
