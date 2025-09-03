@@ -32,11 +32,13 @@ jobs:
       - name: Build & Push (buildpacks)
         id: out
         run: |
+          set -e
           IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_REPO }}/app:${GITHUB_SHA}"
           gcloud builds submit \
             --pack image="$IMAGE" \
             --gcs-source-staging-dir "gs://${{ env.PROJECT_NUMBER }}-cloudbuild/source" \
             --async
+          # 최신 빌드 ID 폴링(최근순 1개)
           BID=$(gcloud builds list --filter="images:$IMAGE" --sort-by="~createTime" --format="value(ID)" --limit=1 --project ${{ env.PROJECT_ID }})
           gcloud builds describe "$BID" --format="value(status)" --project ${{ env.PROJECT_ID }}
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
@@ -62,6 +64,7 @@ jobs:
 
       - name: Deploy ${{ matrix.svc }}
         run: |
+          set -e
           IMAGE="${{ needs.build.outputs.image }}"
           gcloud run deploy "${{ matrix.svc }}" \
             --image "$IMAGE" \
@@ -71,6 +74,7 @@ jobs:
 
       - name: Smoke /health ${{ matrix.svc }}
         run: |
+          set -e
           URL=$(gcloud run services describe "${{ matrix.svc }}" --region "${{ env.REGION }}" --project "${{ env.PROJECT_ID }}" --format='value(status.url)')
           echo "Check: $URL/health"
           curl -fsSL "$URL/health" >/dev/null
