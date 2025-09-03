@@ -1,1 +1,2 @@
-from .main import app, create_app  # 'from app import app' / 'from app import create_app' 모두 지원
+from .main import create_app, app
+__all__ = ["create_app", "app"]
