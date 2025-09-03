@@ -64,9 +64,18 @@ jobs:
       - if: steps.gate.outputs.ok == 'true'
         name: Deploy
         run: |
+          # Build → Deploy (pin staging bucket)
+          HOST="${{ steps.meta.outputs.region }}-docker.pkg.dev"
+          IMAGE="$HOST/$GOOGLE_CLOUD_PROJECT/cloud-run-source-deploy/${{ steps.meta.outputs.svc }}:${{ github.sha }}"
+
+          # 1) Build with Buildpacks (Cloud Build) and push to Artifact Registry
+          gcloud builds submit . \
+            --gcs-source-staging-dir "gs://${GOOGLE_CLOUD_PROJECT}_cloudbuild/source" \
+            --pack image="$IMAGE"
+
+          # 2) Deploy built image to Cloud Run
           gcloud run deploy "${{ steps.meta.outputs.svc }}" \
             --region "${{ steps.meta.outputs.region }}" \
-            --source . \
-              --gcs-source-staging-dir "gs://$CLOUDSDK_CORE_PROJECT_cloudbuild/source" \
+            --image "$IMAGE" \
             --platform managed \
             --allow-unauthenticated
