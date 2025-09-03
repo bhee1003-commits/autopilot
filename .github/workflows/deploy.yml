@@ -9,12 +9,12 @@ on:
 
 permissions:
   contents: read
-  id-token: write
+  id-token: write   # OIDC 필수
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # WIF 필수 4개 시크릿 없으면 자동 스킵
+    # 4개 시크릿이 모두 있지 않으면 스킵(로그만)
     if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT_EMAIL != '' && secrets.GCP_PROJECT != '' && secrets.GCP_REGION != '' }}
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +39,12 @@ jobs:
             *)    echo "svc=cloudrun-main"  >> "$GITHUB_OUTPUT";;
           esac
           echo "region=${{ secrets.GCP_REGION }}" >> "$GITHUB_OUTPUT"
+
+      - name: gcloud sanity
+        run: |
+          gcloud --version
+          gcloud auth list
+          gcloud config list
 
       - name: Deploy
         run: |
