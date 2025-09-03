@@ -6,19 +6,21 @@ on:
     paths:
       - "app/**"
       - ".github/workflows/deploy.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write
+  id-token: write  # OIDC for WIF
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Skip when any of the required secrets are missing
+    # 4개 GCP 시크릿 모두 있을 때만 동작
     if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT_EMAIL != '' && secrets.GCP_PROJECT != '' && secrets.GCP_REGION != '' }}
     steps:
       - uses: actions/checkout@v4
 
+      # 보기 좋은 자체 점검 (로그에 true/false 표시)
       - name: Check required secrets
         env:
           HAS_WIP:    ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
@@ -31,6 +33,7 @@ jobs:
           echo "GCP_PROJECT                   : $HAS_PROJ"
           echo "GCP_REGION                    : $HAS_REGION"
 
+      # OIDC(WIF) 인증
       - id: auth
         uses: google-github-actions/auth@v2
         with:
@@ -41,17 +44,24 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT }}
 
+      # 브랜치별 서비스명/리전 계산
       - name: Set service and region
         id: meta
         run: |
           case "${GITHUB_REF_NAME}" in
-            main) echo "svc=cloudrun-main"  >> "$GITHUB_OUTPUT";;
-            beta) echo "svc=cloudrun-beta"  >> "$GITHUB_OUTPUT";;
-            exp)  echo "svc=cloudrun-exp"   >> "$GITHUB_OUTPUT";;
-            *)    echo "svc=cloudrun-main"  >> "$GITHUB_OUTPUT";;
+            main) SVC=cloudrun-main ;;
+            beta) SVC=cloudrun-beta ;;
+            exp)  SVC=cloudrun-exp  ;;
+            *)    SVC=cloudrun-main ;;
           esac
+          echo "svc=$SVC" >> "$GITHUB_OUTPUT"
           echo "region=${{ secrets.GCP_REGION }}" >> "$GITHUB_OUTPUT"
 
+      # 실제 배포(소스에서 빌드 & 배포)
       - name: Deploy
         run: |
-          gcloud run deploy "${{ steps.meta.outputs.svc }}"                 --region "${{ steps.meta.outputs.region }}"                 --source .                 --platform managed                 --allow-unauthenticated
+          gcloud run deploy "${{ steps.meta.outputs.svc }}" \
+            --region "${{ steps.meta.outputs.region }}" \
+            --source . \
+            --platform managed \
+            --allow-unauthenticated
