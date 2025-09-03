@@ -10,28 +10,29 @@ on:
 permissions:
   contents: read
   id-token: write
-
+\
 jobs:
   deploy:
     runs-on: ubuntu-latest
     # WIF 필수 4개 시크릿 없으면 자동 스킵
     if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT_EMAIL != '' && secrets.GCP_PROJECT != '' && secrets.GCP_REGION != '' }}
+
     steps:
-      - name: Check required secrets
-        run: |
-          echo "GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER !=  }}"
-          echo "GCP_SERVICE_ACCOUNT_EMAIL   : ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL   !=  }}"
-          echo "GCP_PROJECT                 : ${{ secrets.GCP_PROJECT                 !=  }}"
-          echo "GCP_REGION                  : ${{ secrets.GCP_REGION                  !=  }}"
-      - id: gate
-        run: |
-          ok=$(( ${ { secrets.GCP_WORKLOAD_IDENTITY_PROVIDER !=  } } &&
-                 ${ { secrets.GCP_SERVICE_ACCOUNT_EMAIL   !=  } } &&
-                 ${ { secrets.GCP_PROJECT                 !=  } } &&
-                 ${ { secrets.GCP_REGION                  !=  } } ))
-          echo "ok=$ok" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
 
+      # 보기 좋은 자체 점검(로그로 true/false만 출력)
+      - name: Check required secrets
+        env:
+          HAS_WIP:    ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+          HAS_SA:     ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL   != '' }}
+          HAS_PROJ:   ${{ secrets.GCP_PROJECT                 != '' }}
+          HAS_REGION: ${{ secrets.GCP_REGION                  != '' }}
+        run: |
+          echo "GCP_WORKLOAD_IDENTITY_PROVIDER: $HAS_WIP"
+          echo "GCP_SERVICE_ACCOUNT_EMAIL     : $HAS_SA"
+          echo "GCP_PROJECT                   : $HAS_PROJ"
+          echo "GCP_REGION                    : $HAS_REGION" \
+\
       - id: auth
         uses: google-github-actions/auth@v2
         with:
@@ -51,10 +52,12 @@ jobs:
             exp)  echo "svc=cloudrun-exp"   >> "$GITHUB_OUTPUT";;
             *)    echo "svc=cloudrun-main"  >> "$GITHUB_OUTPUT";;
           esac
-          echo "region=${{ secrets.GCP_REGION }}" >> "$GITHUB_OUTPUT"
-
-      - if: ${{ steps.gate.outputs.ok == 1 }}
-name: Deploy
+          echo "region=${{ secrets.GCP_REGION }}" >> "$GITHUB_OUTPUT" \
+\
+     - name: Deploy
         run: |
-          gcloud run deploy "${{ steps.meta.outputs.svc }}"             --region "${{ steps.meta.outputs.region }}"             --source .             --platform managed             --allow-unauthenticated
-�
+          gcloud run deploy "${{ steps.meta.outputs.svc }}" \
+            --region "${{ steps.meta.outputs.region }}" \
+            --source . \
+            --platform managed \
+            --allow-unauthenticated
