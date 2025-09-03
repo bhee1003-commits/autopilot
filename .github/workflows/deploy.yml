@@ -67,5 +67,6 @@ jobs:
           gcloud run deploy "${{ steps.meta.outputs.svc }}" \
             --region "${{ steps.meta.outputs.region }}" \
             --source . \
+              --gcs-source-staging-dir "gs://$CLOUDSDK_CORE_PROJECT_cloudbuild/source" \
             --platform managed \
             --allow-unauthenticated
