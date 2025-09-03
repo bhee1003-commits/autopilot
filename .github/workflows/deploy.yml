@@ -64,18 +64,24 @@ jobs:
       - if: steps.gate.outputs.ok == 'true'
         name: Deploy
         run: |
-          # Build → Deploy (pin staging bucket)
+          # Build → Deploy (pin staging bucket to PROJECT_NUMBER-cloudbuild)
           HOST="${{ steps.meta.outputs.region }}-docker.pkg.dev"
           IMAGE="$HOST/$GOOGLE_CLOUD_PROJECT/cloud-run-source-deploy/${{ steps.meta.outputs.svc }}:${{ github.sha }}"
 
-          # 1) Build with Buildpacks (Cloud Build) and push to Artifact Registry
+          # 프로젝트 번호로 스테이징 버킷 결정 (이 버킷은 우리 프로젝트 소유)
+          PROJECT_NUM="$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format='value(projectNumber)')"
+          STAGING="gs://${PROJECT_NUM}-cloudbuild/source"
+
+          # 1) Cloud Build로 이미지 빌드 후 Artifact Registry에 push
           gcloud builds submit . \
-            --gcs-source-staging-dir "gs://${GOOGLE_CLOUD_PROJECT}_cloudbuild/source" \
+            --gcs-source-staging-dir "$STAGING" \
             --pack image="$IMAGE"
 
-          # 2) Deploy built image to Cloud Run
+          # 2) 빌드된 이미지를 Cloud Run에 배포
           gcloud run deploy "${{ steps.meta.outputs.svc }}" \
             --region "${{ steps.meta.outputs.region }}" \
             --image "$IMAGE" \
             --platform managed \
             --allow-unauthenticated
+
+
