@@ -1,0 +1,87 @@
+name: Deploy to Cloud Run (matrix)
+
+on:
+  push:
+    branches: [ "main", "beta", "exp" ]
+  workflow_dispatch:
+
+env:
+  REGION: asia-northeast3
+  PROJECT_ID: ust-multiverse-dev
+  PROJECT_NUMBER: 128056465529
+  IMAGE_REPO: cloud-run-source-deploy
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.out.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.CI_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          install_components: 'beta'
+
+      - name: Build & Push (buildpacks)
+        id: out
+        run: |
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_REPO }}/app:${GITHUB_SHA}"
+          gcloud builds submit \
+            --pack image="$IMAGE" \
+            --gcs-source-staging-dir "gs://${{ env.PROJECT_NUMBER }}-cloudbuild/source" \
+            --async
+          BID=$(gcloud builds list --filter="images:$IMAGE" --sort-by="~createTime" --format="value(ID)" --limit=1 --project ${{ env.PROJECT_ID }})
+          gcloud builds describe "$BID" --format="value(status)" --project ${{ env.PROJECT_ID }}
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        svc: [cloudrun-main, cloudrun-beta, cloudrun-exp]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.CI_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          install_components: 'beta'
+
+      - name: Deploy ${{ matrix.svc }}
+        run: |
+          IMAGE="${{ needs.build.outputs.image }}"
+          gcloud run deploy "${{ matrix.svc }}" \
+            --image "$IMAGE" \
+            --region "${{ env.REGION }}" \
+            --allow-unauthenticated \
+            --project "${{ env.PROJECT_ID }}"
+
+      - name: Smoke /health ${{ matrix.svc }}
+        run: |
+          URL=$(gcloud run services describe "${{ matrix.svc }}" --region "${{ env.REGION }}" --project "${{ env.PROJECT_ID }}" --format='value(status.url)')
+          echo "Check: $URL/health"
+          curl -fsSL "$URL/health" >/dev/null
+          echo "OK"
+
+      - name: Slack notify
+        if: always() && secrets.SLACK_WEBHOOK_URL != ''
+        run: |
+          STATUS="${{ job.status }}"
+          SVC="${{ matrix.svc }}"
+          URL=$(gcloud run services describe "$SVC" --region "${{ env.REGION }}" --project "${{ env.PROJECT_ID }}" --format='value(status.url)')
+          MSG="[$STATUS] $SVC -> $URL  (@ ${GITHUB_SHA:0:7})"
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"$MSG\"}" "${{ secrets.SLACK_WEBHOOK_URL }}"
