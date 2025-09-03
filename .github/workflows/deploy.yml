@@ -64,18 +64,34 @@ jobs:
       - if: steps.gate.outputs.ok == 'true'
         name: Deploy
         run: |
-          # Build → Deploy (pin staging bucket to PROJECT_NUMBER-cloudbuild)
+          # Build → Deploy (no log streaming; async submit + poll)
           HOST="${{ steps.meta.outputs.region }}-docker.pkg.dev"
           IMAGE="$HOST/$GOOGLE_CLOUD_PROJECT/cloud-run-source-deploy/${{ steps.meta.outputs.svc }}:${{ github.sha }}"
 
-          # 프로젝트 번호로 스테이징 버킷 결정 (이 버킷은 우리 프로젝트 소유)
+          # 스테이징 버킷 (우리 프로젝트 번호 기반)
           PROJECT_NUM="$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" --format='value(projectNumber)')"
           STAGING="gs://${PROJECT_NUM}-cloudbuild/source"
 
-          # 1) Cloud Build로 이미지 빌드 후 Artifact Registry에 push
-          gcloud builds submit . \
+          # 1) Cloud Build 제출 (비동기) → 빌드 ID 추출
+          BUILD_NAME="$(gcloud builds submit . \
             --gcs-source-staging-dir "$STAGING" \
-            --pack image="$IMAGE"
+            --pack image="$IMAGE" \
+            --async \
+            --format='value(name)')"
+          BUILD_ID="${BUILD_NAME##*/}"
+          echo "BUILD_ID=$BUILD_ID"
+
+          # 1-1) 상태 폴링 (SUCCESS 될 때까지 대기; 실패/취소 시 종료)
+          for i in $(seq 1 360); do
+            STATUS="$(gcloud builds describe "$BUILD_ID" --format='value(status)')"
+            echo "Build status: $STATUS"
+            case "$STATUS" in
+              SUCCESS) break ;;
+              FAILURE|CANCELLED) echo "Build failed: $STATUS"; exit 1 ;;
+              "") echo "Unknown build status"; exit 1 ;;
+              *) sleep 5 ;;
+            esac
+          done
 
           # 2) 빌드된 이미지를 Cloud Run에 배포
           gcloud run deploy "${{ steps.meta.outputs.svc }}" \
@@ -83,5 +99,8 @@ jobs:
             --image "$IMAGE" \
             --platform managed \
             --allow-unauthenticated
+
+
+
 
 
