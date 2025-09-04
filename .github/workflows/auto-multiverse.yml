@@ -1,0 +1,66 @@
+name: Auto Multiverse Codegen → exp
+
+on:
+  schedule:
+    - cron: "5 18 * * *"   # 매일 03:05 KST
+  workflow_dispatch:
+
+permissions:
+  contents: write   # ← 코드 푸시 필요
+  id-token: write
+
+env:
+  TARGET_BRANCH: exp
+
+jobs:
+  codegen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      - name: Install deps
+        run: pip install --upgrade openai pyyaml
+
+      - name: Generate code from roadmap
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          python scripts/auto_multiverse.py
+          if git diff --quiet; then
+            echo "No changes."
+            echo "CHANGED=0" >> $GITHUB_ENV
+          else
+            echo "CHANGED=1" >> $GITHUB_ENV
+          fi
+
+      - name: Commit & push to exp
+        if: env.CHANGED == '1'
+        run: |
+          set -e
+          git config user.name  "auto-multiverse-bot"
+          git config user.email "auto-multiverse-bot@users.noreply.github.com"
+          git checkout -B "${TARGET_BRANCH}"
+          git add -A
+          git commit -m "auto(exp): generate experiments from roadmap [skip ci]"
+          git push origin "HEAD:${TARGET_BRANCH}"
+
+      - name: Email on success (generated and pushed)
+        if: env.CHANGED == '1'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_HOST }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASS }}
+          subject: "[AUTO] exp codegen pushed ✓"
+          from: ${{ secrets.SMTP_FROM }}
+          to: ${{ secrets.SMTP_TO }}
+          body: |
+            Auto-generated experiments were pushed to exp.
+            Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
