@@ -1,0 +1,17 @@
+tasks:
+  - id: EXP-hello-json
+    status: todo
+    target: exp
+    path: app/experiments/exp_hello.py
+    prompt: |
+      Flask blueprint를 만들어 주세요.
+      - register(app) 함수에서 Blueprint('/exp')를 등록
+      - GET /exp/hello → {"status":"ok","universe":"exp","version":"0.1"} JSON
+      - 간단한 docstring 포함
+  - id: EXP-feature-flag-banner
+    status: todo
+    target: exp
+    path: app/experiments/exp_banner.py
+    prompt: |
+      Flask에서 before_request 훅으로 X-Exp-Banner 헤더 추가.
+      register(app) 안에서만 활성화. 코드 간결하게.
