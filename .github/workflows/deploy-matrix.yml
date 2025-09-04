@@ -39,32 +39,23 @@ jobs:
         run: |
           set -euo pipefail
           IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_REPO }}/app:${GITHUB_SHA}"
-
-          # Submit async (권한상 로그 스트리밍 이슈 회피)
           gcloud builds submit \
             --pack image="$IMAGE" \
             --gcs-source-staging-dir "gs://${{ env.PROJECT_NUMBER }}-cloudbuild/source" \
             --async
-
-          # Cloud Build 완료까지 폴링 (최대 ~20분, 10초 간격)
           for i in {1..120}; do
             BID=$(gcloud builds list --filter="images:$IMAGE" --sort-by="~createTime" \
                   --format="value(ID)" --limit=1 --project ${{ env.PROJECT_ID }})
             if [[ -n "${BID:-}" ]]; then
               STATUS=$(gcloud builds describe "$BID" --project ${{ env.PROJECT_ID }} --format="value(status)")
               echo "Build $BID status=$STATUS"
-              if [[ "$STATUS" == "SUCCESS" ]]; then
-                break
-              elif [[ "$STATUS" == "FAILURE" || "$STATUS" == "CANCELLED" || "$STATUS" == "TIMEOUT" ]]; then
-                echo "Build failed with status=$STATUS"
-                exit 1
-              fi
+              [[ "$STATUS" == "SUCCESS" ]] && break
+              [[ "$STATUS" =~ ^(FAILURE|CANCELLED|TIMEOUT)$ ]] && { echo "Build failed ($STATUS)"; exit 1; }
             else
               echo "Build not visible yet..."
             fi
             sleep 10
           done
-
           [[ "${STATUS:-}" == "SUCCESS" ]] || { echo "Build did not reach SUCCESS"; exit 1; }
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
@@ -91,7 +82,6 @@ jobs:
           set -euo pipefail
           IMAGE="${{ needs.build.outputs.image }}"
           SVC="${{ matrix.svc }}"
-          echo "Deploying $SVC with $IMAGE"
           gcloud run deploy "$SVC" \
             --image "$IMAGE" \
             --region "${{ env.REGION }}" \
@@ -109,28 +99,51 @@ jobs:
           URL=$(gcloud run services describe "$SVC" --region "$REGION" --project "$PROJECT" --format='value(status.url)')
           TARGET="${URL%/}/health"
           echo "Check: $TARGET"
-
           for i in {1..60}; do
             read LREADY LCREATED < <(gcloud run services describe "$SVC" --region "$REGION" --project "$PROJECT" --format='value(status.latestReadyRevisionName,status.latestCreatedRevisionName)')
             echo "Ready=$LREADY, Created=$LCREATED (t=$((i*5))s)"
-            if [[ -n "$LREADY" && "$LREADY" == "$LCREATED" ]]; then
-              break
-            fi
+            [[ -n "$LREADY" && "$LREADY" == "$LCREATED" ]] && break
             sleep 5
           done
-
           for i in {1..20}; do
             code="$(curl -L -sS -o /dev/null -w "%{http_code}" \
                     --connect-timeout 5 --max-time 10 \
                     --retry 5 --retry-delay 2 --retry-all-errors \
                     "$TARGET" || echo 000)"
             echo "Attempt $i → HTTP $code"
-            if [[ "$code" == "200" ]]; then
-              echo "Health OK"
-              exit 0
-            fi
+            [[ "$code" == "200" ]] && { echo "Health OK"; exit 0; }
             sleep 10
           done
+          echo "ERROR: health check failed"; exit 1
 
-          echo "ERROR: health check failed"
-          exit 1
+      - name: Email on SUCCESS (${{ matrix.svc }})
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_HOST }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASS }}
+          subject: "[OK] ${{ matrix.svc }} deploy ✓"
+          from: ${{ secrets.SMTP_FROM }}
+          to: ${{ secrets.SMTP_TO }}
+          body: |
+            Service: ${{ matrix.svc }}
+            Image:   ${{ needs.build.outputs.image }}
+            URL:     (see Cloud Run)
+            Run:     https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Email on FAILURE (${{ matrix.svc }})
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_HOST }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASS }}
+          subject: "[FAIL] ${{ matrix.svc }} deploy ✗"
+          from: ${{ secrets.SMTP_FROM }}
+          to: ${{ secrets.SMTP_TO }}
+          body: |
+            Service: ${{ matrix.svc }}
+            Run:     https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
