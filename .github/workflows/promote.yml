@@ -1,0 +1,45 @@
+name: Nightly Promote
+
+on:
+  schedule:
+    - cron: "0 18 * * *"   # 매일 03:00 KST (UTC 18:00)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGION: asia-northeast3
+  PROJECT_ID: ust-multiverse-dev
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.CI_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Promote main→exp→beta
+        shell: bash
+        run: |
+          set -euo pipefail
+          promote () {
+            from=$1; to=$2
+            IMG=$(gcloud run services describe cloudrun-$from \
+                  --region "$REGION" --project "$PROJECT_ID" \
+                  --format='value(spec.template.spec.containers[0].image)')
+            echo "Promote $from → $to ($IMG)"
+            gcloud run deploy cloudrun-$to \
+              --image "$IMG" \
+              --region "$REGION" --project "$PROJECT_ID" \
+              --allow-unauthenticated --quiet
+          }
+          promote main exp
+          promote exp beta
