@@ -1,17 +1,113 @@
 tasks:
-  - id: EXP-hello-json
+  # ========= Core (이미 보유) =========
+  - id: CORE-health-root
+    status: keep
+    target: exp
+    path: app/experiments/exp_core_health.py
+    prompt: |
+      (변경 없음)
+
+  - id: CORE-error-handlers
+    status: keep
+    target: exp
+    path: app/experiments/exp_error_handlers.py
+    prompt: |
+      (변경 없음)
+
+  - id: CORE-request-logging
+    status: keep
+    target: exp
+    path: app/experiments/exp_request_logging.py
+    prompt: |
+      (변경 없음)
+
+  # ========= Strategy endpoints (실데이터) =========
+
+  # 4) 금리곡선: CSV(exog_with_labels_fixed.csv) 기반
+  - id: RATES-yieldcurve-endpoint
     status: todo
     target: exp
-    path: app/experiments/exp_hello.py
+    path: app/experiments/exp_rates.py
     prompt: |
-      Flask blueprint를 만들어 주세요.
-      - register(app) 함수에서 Blueprint('/exp')를 등록
-      - GET /exp/hello → {"status":"ok","universe":"exp","version":"0.1"} JSON
-      - 간단한 docstring 포함
-  - id: EXP-feature-flag-banner
+      목적: 금리곡선(2Y,10Y)과 스프레드 제공(실데이터).
+      입력데이터:
+        - 파일: ${DATA_DIR}/exog_with_labels_fixed.csv
+        - 컬럼 예시: date, us2y, us10y (실제 컬럼명 다르면 합리적으로 매칭)
+      출력(JSON):
+        - GET /rates/yieldcurve → {"us2y": float, "us10y": float, "spread": float, "asof":"YYYY-MM-DD"}
+          * asof = 가장 최신일자
+          * spread = us2y - us10y
+      구현:
+        - Blueprint('/rates') 등록
+        - pandas로 CSV 로드 (DATA_DIR=os.environ.get("DATA_DIR","data"))
+        - 결측/문자열 숫자 처리 유연성
+      테스트(pytest):
+        - 200 응답
+        - 키(us2y,us10y,spread,asof) 존재 및 타입 확인
+        - spread = us2y - us10y 검증(절대오차 < 1e-9)
+
+  # 5) FX: DXY (bbg_multi_*.xlsx 합치는 방식)
+  - id: FX-dxy-endpoint
     status: todo
     target: exp
-    path: app/experiments/exp_banner.py
+    path: app/experiments/exp_fx.py
     prompt: |
-      Flask에서 before_request 훅으로 X-Exp-Banner 헤더 추가.
-      register(app) 안에서만 활성화. 코드 간결하게.
+      목적: DXY 지수 최신값 제공(실데이터).
+      입력데이터:
+        - 패턴: ${DATA_DIR}/bbg_multi_*.xlsx (여러 일자의 시트 또는 파일)
+        - 열/시트 구성은 합리적으로 감지 (DXY/Index 등의 라벨 검색)
+      출력(JSON):
+        - GET /fx/dxy → {"dxy": float, "ts": "ISO8601"}
+          * ts = 최신 데이터 타임스탬프(가능하면 파일/시트에서 추출)
+      구현:
+        - Blueprint('/fx') 등록
+        - openpyxl + pandas로 여러 파일 concat → 최신 시계열 1포인트
+      테스트(pytest):
+        - 200 응답
+        - 키(dxy,ts) 존재 및 타입 확인
+        - dxy > 0 검증
+
+  # 6) EQUITIES: 심볼별 최근 종가/변동률 (bbg_multi_*.xlsx)
+  - id: EQ-latest-prices
+    status: todo
+    target: exp
+    path: app/experiments/exp_eq.py
+    prompt: |
+      목적: 지정 심볼들에 대한 최근 종가/변동률 요약.
+      입력데이터:
+        - ${DATA_DIR}/bbg_multi_*.xlsx
+        - 심볼 라벨 예: "AAPL US Equity", "MSFT US Equity" 등 (대소문자/스페이스 유연)
+      파라미터:
+        - GET /eq/latest?symbols=AAPL,MSFT (콤마분리, 미지정시 상위 5개)
+      출력(JSON):
+        - {"items":[{"symbol":"AAPL","close":float,"chg_pct":float,"asof":"YYYY-MM-DD"},...]}
+        - chg_pct = (close - prev_close)/prev_close * 100
+      구현:
+        - Blueprint('/eq') 등록
+        - 여러 파일 merge → 심볼별 가장 최신 2개 관측치로 chg_pct 계산
+      테스트(pytest):
+        - 200 응답
+        - 요청 심볼 수와 응답 items 수 일치
+        - 각 item에 필수 키 존재, chg_pct 계산 가능한지 검증
+
+  # 7) COMMODITIES: 원자재 지수/선물(예: WTI, Gold) 스냅샷 (bbg_multi_*.xlsx)
+  - id: COMMO-snapshot
+    status: todo
+    target: exp
+    path: app/experiments/exp_commodities.py
+    prompt: |
+      목적: 지정 원자재(예: WTI, GOLD) 스냅샷 제공.
+      입력데이터:
+        - ${DATA_DIR}/bbg_multi_*.xlsx
+        - 라벨 예: "CL1 Comdty" (WTI), "XAU Curncy" (Gold) 등
+      파라미터:
+        - GET /commo/snapshot?tickers=CL1,XAU
+      출력(JSON):
+        - {"items":[{"ticker":"CL1","last":float,"asof":"YYYY-MM-DD"},...]}
+      구현:
+        - Blueprint('/commo') 등록
+        - 티커-라벨 매핑은 내부 dict로 간단히 매칭해도 됨(예: CL1→"CL1 Comdty")
+      테스트(pytest):
+        - 200 응답
+        - 요청 티커 수와 items 수 일치
+        - last > 0, asof 존재
