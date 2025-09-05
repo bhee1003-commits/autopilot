@@ -2,7 +2,7 @@ name: Auto Multiverse Codegen → exp
 
 on:
   schedule:
-    - cron: "5 18 * * *"   # 매일 03:05 KST
+    - cron: "0 * * * *"   # 매일 03:05 KST
   workflow_dispatch:
 
 permissions:
