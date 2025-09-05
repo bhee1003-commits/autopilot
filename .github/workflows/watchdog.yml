@@ -8,7 +8,7 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     env:
-      URL: https://cloudrun-exp-128056465529.asia-northeast3.run.app
+      URL: ${{ secrets.WATCH_URL }}
     steps:
       - name: Ping endpoints
         run: |
