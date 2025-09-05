@@ -1,0 +1,45 @@
+name: Cloud Run Watchdog
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # 10분마다
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    env:
+      URL: https://cloudrun-exp-128056465529.asia-northeast3.run.app
+    steps:
+      - name: Ping endpoints
+        run: |
+          set -euo pipefail
+          : > failures.txt
+          for P in /health /rates/yieldcurve /fx/dxy "/eq/latest?symbols=AAPL,MSFT"; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$URL$P" || echo 000)
+            echo "$P → $code"
+            [ "$code" != "200" ] && echo "FAIL $P ($code)" >> failures.txt
+          done
+          if [ -s failures.txt ]; then
+            echo "HAD_FAIL=1" >> $GITHUB_ENV
+          else
+            echo "HAD_FAIL=0" >> $GITHUB_ENV
+          fi
+
+      - name: Email on failure
+        if: env.HAD_FAIL == '1'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_HOST }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASS }}
+          from:     ${{ secrets.SMTP_FROM }}
+          to:       ${{ secrets.SMTP_TO }}
+          subject:  "[Watchdog] Cloud Run exp check ❌"
+          body: |
+            Repo:   ${{ github.repository }}
+            Run:    https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            URL:    ${{ env.URL }}
+
+            See attachment for failing endpoints.
+          attachments: failures.txt
