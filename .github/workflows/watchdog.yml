@@ -1,7 +1,7 @@
 name: Cloud Run Watchdog
 on:
   schedule:
-    - cron: '*/10 * * * *'   # 10분마다
+    - cron: '*/10 * * * *'    # 10분마다
   workflow_dispatch:
 
 jobs:
@@ -17,7 +17,7 @@ jobs:
           for P in /health /rates/yieldcurve /fx/dxy "/eq/latest?symbols=AAPL,MSFT"; do
             code=$(curl -s -o /dev/null -w "%{http_code}" "$URL$P" || echo 000)
             echo "$P → $code"
-            [ "$code" != "200" ] && echo "FAIL $P ($code)" >> failures.txt
+            [ "$code" != "200" ] && echo "$P → $code" >> failures.txt
           done
           if [ -s failures.txt ]; then
             echo "HAD_FAIL=1" >> $GITHUB_ENV
@@ -41,5 +41,6 @@ jobs:
             Run:    https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
             URL:    ${{ env.URL }}
 
-            See attachment for failing endpoints.
+            Failing endpoints:
+            ${{ steps.list_failures.outputs.data || '' }}
           attachments: failures.txt
