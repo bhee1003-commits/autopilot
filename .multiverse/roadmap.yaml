@@ -1,113 +1,81 @@
 tasks:
-  # ========= Core (이미 보유) =========
-  - id: CORE-health-root
-    status: keep
-    target: exp
-    path: app/experiments/exp_core_health.py
-    prompt: |
-      (변경 없음)
-
-  - id: CORE-error-handlers
-    status: keep
-    target: exp
-    path: app/experiments/exp_error_handlers.py
-    prompt: |
-      (변경 없음)
-
-  - id: CORE-request-logging
-    status: keep
-    target: exp
-    path: app/experiments/exp_request_logging.py
-    prompt: |
-      (변경 없음)
-
-  # ========= Strategy endpoints (실데이터) =========
-
-  # 4) 금리곡선: CSV(exog_with_labels_fixed.csv) 기반
-  - id: RATES-yieldcurve-endpoint
-    status: todo
-    target: exp
-    path: app/experiments/exp_rates.py
-    prompt: |
-      목적: 금리곡선(2Y,10Y)과 스프레드 제공(실데이터).
-      입력데이터:
-        - 파일: ${DATA_DIR}/exog_with_labels_fixed.csv
-        - 컬럼 예시: date, us2y, us10y (실제 컬럼명 다르면 합리적으로 매칭)
-      출력(JSON):
-        - GET /rates/yieldcurve → {"us2y": float, "us10y": float, "spread": float, "asof":"YYYY-MM-DD"}
-          * asof = 가장 최신일자
-          * spread = us2y - us10y
-      구현:
-        - Blueprint('/rates') 등록
-        - pandas로 CSV 로드 (DATA_DIR=os.environ.get("DATA_DIR","data"))
-        - 결측/문자열 숫자 처리 유연성
-      테스트(pytest):
-        - 200 응답
-        - 키(us2y,us10y,spread,asof) 존재 및 타입 확인
-        - spread = us2y - us10y 검증(절대오차 < 1e-9)
-
-  # 5) FX: DXY (bbg_multi_*.xlsx 합치는 방식)
-  - id: FX-dxy-endpoint
-    status: todo
-    target: exp
-    path: app/experiments/exp_fx.py
-    prompt: |
-      목적: DXY 지수 최신값 제공(실데이터).
-      입력데이터:
-        - 패턴: ${DATA_DIR}/bbg_multi_*.xlsx (여러 일자의 시트 또는 파일)
-        - 열/시트 구성은 합리적으로 감지 (DXY/Index 등의 라벨 검색)
-      출력(JSON):
-        - GET /fx/dxy → {"dxy": float, "ts": "ISO8601"}
-          * ts = 최신 데이터 타임스탬프(가능하면 파일/시트에서 추출)
-      구현:
-        - Blueprint('/fx') 등록
-        - openpyxl + pandas로 여러 파일 concat → 최신 시계열 1포인트
-      테스트(pytest):
-        - 200 응답
-        - 키(dxy,ts) 존재 및 타입 확인
-        - dxy > 0 검증
-
-  # 6) EQUITIES: 심볼별 최근 종가/변동률 (bbg_multi_*.xlsx)
-  - id: EQ-latest-prices
-    status: todo
-    target: exp
-    path: app/experiments/exp_eq.py
-    prompt: |
-      목적: 지정 심볼들에 대한 최근 종가/변동률 요약.
-      입력데이터:
-        - ${DATA_DIR}/bbg_multi_*.xlsx
-        - 심볼 라벨 예: "AAPL US Equity", "MSFT US Equity" 등 (대소문자/스페이스 유연)
-      파라미터:
-        - GET /eq/latest?symbols=AAPL,MSFT (콤마분리, 미지정시 상위 5개)
-      출력(JSON):
-        - {"items":[{"symbol":"AAPL","close":float,"chg_pct":float,"asof":"YYYY-MM-DD"},...]}
-        - chg_pct = (close - prev_close)/prev_close * 100
-      구현:
-        - Blueprint('/eq') 등록
-        - 여러 파일 merge → 심볼별 가장 최신 2개 관측치로 chg_pct 계산
-      테스트(pytest):
-        - 200 응답
-        - 요청 심볼 수와 응답 items 수 일치
-        - 각 item에 필수 키 존재, chg_pct 계산 가능한지 검증
-
-  # 7) COMMODITIES: 원자재 지수/선물(예: WTI, Gold) 스냅샷 (bbg_multi_*.xlsx)
-  - id: COMMO-snapshot
-    status: todo
-    target: exp
-    path: app/experiments/exp_commodities.py
-    prompt: |
-      목적: 지정 원자재(예: WTI, GOLD) 스냅샷 제공.
-      입력데이터:
-        - ${DATA_DIR}/bbg_multi_*.xlsx
-        - 라벨 예: "CL1 Comdty" (WTI), "XAU Curncy" (Gold) 등
-      파라미터:
-        - GET /commo/snapshot?tickers=CL1,XAU
-      출력(JSON):
-        - {"items":[{"ticker":"CL1","last":float,"asof":"YYYY-MM-DD"},...]}
-      구현:
-        - Blueprint('/commo') 등록
-        - 티커-라벨 매핑은 내부 dict로 간단히 매칭해도 됨(예: CL1→"CL1 Comdty")
-      테스트(pytest):
-        - 200 응답
-        - 요청 티커 수와 items 수 일치
-        - last > 0, asof 존재
+- id: CORE-health-root
+  status: keep
+  target: exp
+  path: app/experiments/exp_core_health.py
+  prompt: "(\uBCC0\uACBD \uC5C6\uC74C)\n"
+- id: CORE-error-handlers
+  status: keep
+  target: exp
+  path: app/experiments/exp_error_handlers.py
+  prompt: "(\uBCC0\uACBD \uC5C6\uC74C)\n"
+- id: CORE-request-logging
+  status: keep
+  target: exp
+  path: app/experiments/exp_request_logging.py
+  prompt: "(\uBCC0\uACBD \uC5C6\uC74C)\n"
+- id: RATES-yieldcurve-endpoint
+  status: done
+  target: exp
+  path: app/experiments/exp_rates.py
+  prompt: "\uBAA9\uC801: \uAE08\uB9AC\uACE1\uC120(2Y,10Y)\uACFC \uC2A4\uD504\uB808\
+    \uB4DC \uC81C\uACF5(\uC2E4\uB370\uC774\uD130).\n\uC785\uB825\uB370\uC774\uD130\
+    :\n  - \uD30C\uC77C: ${DATA_DIR}/exog_with_labels_fixed.csv\n  - \uCEEC\uB7FC\
+    \ \uC608\uC2DC: date, us2y, us10y (\uC2E4\uC81C \uCEEC\uB7FC\uBA85 \uB2E4\uB974\
+    \uBA74 \uD569\uB9AC\uC801\uC73C\uB85C \uB9E4\uCE6D)\n\uCD9C\uB825(JSON):\n  -\
+    \ GET /rates/yieldcurve \u2192 {\"us2y\": float, \"us10y\": float, \"spread\"\
+    : float, \"asof\":\"YYYY-MM-DD\"}\n    * asof = \uAC00\uC7A5 \uCD5C\uC2E0\uC77C\
+    \uC790\n    * spread = us2y - us10y\n\uAD6C\uD604:\n  - Blueprint('/rates') \uB4F1\
+    \uB85D\n  - pandas\uB85C CSV \uB85C\uB4DC (DATA_DIR=os.environ.get(\"DATA_DIR\"\
+    ,\"data\"))\n  - \uACB0\uCE21/\uBB38\uC790\uC5F4 \uC22B\uC790 \uCC98\uB9AC \uC720\
+    \uC5F0\uC131\n\uD14C\uC2A4\uD2B8(pytest):\n  - 200 \uC751\uB2F5\n  - \uD0A4(us2y,us10y,spread,asof)\
+    \ \uC874\uC7AC \uBC0F \uD0C0\uC785 \uD655\uC778\n  - spread = us2y - us10y \uAC80\
+    \uC99D(\uC808\uB300\uC624\uCC28 < 1e-9)\n"
+- id: FX-dxy-endpoint
+  status: done
+  target: exp
+  path: app/experiments/exp_fx.py
+  prompt: "\uBAA9\uC801: DXY \uC9C0\uC218 \uCD5C\uC2E0\uAC12 \uC81C\uACF5(\uC2E4\uB370\
+    \uC774\uD130).\n\uC785\uB825\uB370\uC774\uD130:\n  - \uD328\uD134: ${DATA_DIR}/bbg_multi_*.xlsx\
+    \ (\uC5EC\uB7EC \uC77C\uC790\uC758 \uC2DC\uD2B8 \uB610\uB294 \uD30C\uC77C)\n \
+    \ - \uC5F4/\uC2DC\uD2B8 \uAD6C\uC131\uC740 \uD569\uB9AC\uC801\uC73C\uB85C \uAC10\
+    \uC9C0 (DXY/Index \uB4F1\uC758 \uB77C\uBCA8 \uAC80\uC0C9)\n\uCD9C\uB825(JSON):\n\
+    \  - GET /fx/dxy \u2192 {\"dxy\": float, \"ts\": \"ISO8601\"}\n    * ts = \uCD5C\
+    \uC2E0 \uB370\uC774\uD130 \uD0C0\uC784\uC2A4\uD0EC\uD504(\uAC00\uB2A5\uD558\uBA74\
+    \ \uD30C\uC77C/\uC2DC\uD2B8\uC5D0\uC11C \uCD94\uCD9C)\n\uAD6C\uD604:\n  - Blueprint('/fx')\
+    \ \uB4F1\uB85D\n  - openpyxl + pandas\uB85C \uC5EC\uB7EC \uD30C\uC77C concat \u2192\
+    \ \uCD5C\uC2E0 \uC2DC\uACC4\uC5F4 1\uD3EC\uC778\uD2B8\n\uD14C\uC2A4\uD2B8(pytest):\n\
+    \  - 200 \uC751\uB2F5\n  - \uD0A4(dxy,ts) \uC874\uC7AC \uBC0F \uD0C0\uC785 \uD655\
+    \uC778\n  - dxy > 0 \uAC80\uC99D\n"
+- id: EQ-latest-prices
+  status: done
+  target: exp
+  path: app/experiments/exp_eq.py
+  prompt: "\uBAA9\uC801: \uC9C0\uC815 \uC2EC\uBCFC\uB4E4\uC5D0 \uB300\uD55C \uCD5C\
+    \uADFC \uC885\uAC00/\uBCC0\uB3D9\uB960 \uC694\uC57D.\n\uC785\uB825\uB370\uC774\
+    \uD130:\n  - ${DATA_DIR}/bbg_multi_*.xlsx\n  - \uC2EC\uBCFC \uB77C\uBCA8 \uC608\
+    : \"AAPL US Equity\", \"MSFT US Equity\" \uB4F1 (\uB300\uC18C\uBB38\uC790/\uC2A4\
+    \uD398\uC774\uC2A4 \uC720\uC5F0)\n\uD30C\uB77C\uBBF8\uD130:\n  - GET /eq/latest?symbols=AAPL,MSFT\
+    \ (\uCF64\uB9C8\uBD84\uB9AC, \uBBF8\uC9C0\uC815\uC2DC \uC0C1\uC704 5\uAC1C)\n\uCD9C\
+    \uB825(JSON):\n  - {\"items\":[{\"symbol\":\"AAPL\",\"close\":float,\"chg_pct\"\
+    :float,\"asof\":\"YYYY-MM-DD\"},...]}\n  - chg_pct = (close - prev_close)/prev_close\
+    \ * 100\n\uAD6C\uD604:\n  - Blueprint('/eq') \uB4F1\uB85D\n  - \uC5EC\uB7EC \uD30C\
+    \uC77C merge \u2192 \uC2EC\uBCFC\uBCC4 \uAC00\uC7A5 \uCD5C\uC2E0 2\uAC1C \uAD00\
+    \uCE21\uCE58\uB85C chg_pct \uACC4\uC0B0\n\uD14C\uC2A4\uD2B8(pytest):\n  - 200\
+    \ \uC751\uB2F5\n  - \uC694\uCCAD \uC2EC\uBCFC \uC218\uC640 \uC751\uB2F5 items\
+    \ \uC218 \uC77C\uCE58\n  - \uAC01 item\uC5D0 \uD544\uC218 \uD0A4 \uC874\uC7AC\
+    , chg_pct \uACC4\uC0B0 \uAC00\uB2A5\uD55C\uC9C0 \uAC80\uC99D\n"
+- id: COMMO-snapshot
+  status: done
+  target: exp
+  path: app/experiments/exp_commodities.py
+  prompt: "\uBAA9\uC801: \uC9C0\uC815 \uC6D0\uC790\uC7AC(\uC608: WTI, GOLD) \uC2A4\
+    \uB0C5\uC0F7 \uC81C\uACF5.\n\uC785\uB825\uB370\uC774\uD130:\n  - ${DATA_DIR}/bbg_multi_*.xlsx\n\
+    \  - \uB77C\uBCA8 \uC608: \"CL1 Comdty\" (WTI), \"XAU Curncy\" (Gold) \uB4F1\n\
+    \uD30C\uB77C\uBBF8\uD130:\n  - GET /commo/snapshot?tickers=CL1,XAU\n\uCD9C\uB825\
+    (JSON):\n  - {\"items\":[{\"ticker\":\"CL1\",\"last\":float,\"asof\":\"YYYY-MM-DD\"\
+    },...]}\n\uAD6C\uD604:\n  - Blueprint('/commo') \uB4F1\uB85D\n  - \uD2F0\uCEE4\
+    -\uB77C\uBCA8 \uB9E4\uD551\uC740 \uB0B4\uBD80 dict\uB85C \uAC04\uB2E8\uD788 \uB9E4\
+    \uCE6D\uD574\uB3C4 \uB428(\uC608: CL1\u2192\"CL1 Comdty\")\n\uD14C\uC2A4\uD2B8\
+    (pytest):\n  - 200 \uC751\uB2F5\n  - \uC694\uCCAD \uD2F0\uCEE4 \uC218\uC640 items\
+    \ \uC218 \uC77C\uCE58\n  - last > 0, asof \uC874\uC7AC\n"
